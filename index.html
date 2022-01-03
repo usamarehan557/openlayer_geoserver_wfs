@@ -1,0 +1,212 @@
+<!doctype html>
+<html>
+  <head>
+    <title>Get Features from vector</title>
+    <link rel="stylesheet" href="../assets/ol3/css/ol.css" type="text/css" />
+    <link rel="stylesheet" href="../assets/css/samples.css" type="text/css" />
+    <script src="https://code.jquery.com/jquery-3.6.0.slim.min.js" integrity="sha256-u7e5khyithlIdTpu22PHhENmPcRdFiHRjhAuHcs05RI=" crossorigin="anonymous"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.js" integrity="sha256-H+K7U5CnXl1h5ywQfKtSj8PCmoN9aaq30gDh27Xc0jk=" crossorigin="anonymous"></script>
+  </head>
+
+  <body>
+    <div class="nav">
+      <h3>GIS App</h3>
+    </div>
+    <div id="map" class="map"></div>
+    <div id="popup" class="ol-popup">
+      <a href="#" id="popup-closer" class="ol-popup-closer"></a>
+      <div id="popup-content"></div>
+    </div>
+    <div id="information"></div>
+
+    <script src="../assets/ol3/js/ol-debug.js"></script>
+    <script src="../assets/ol3/js/ol.js"></script>
+    <script>
+
+      // var Features;
+
+      // $.ajax({
+      //     type: "GET",
+      //     url: "http://localhost:8081/geoserver/nyc/ows?service=WFS&version=1.0.0&request=GetFeature&typeName=nyc%3APakistan_with_Kashmir&maxFeatures=50&outputFormat=application%2Fjson",
+      //     // url: '../assets/data/Pakistan_with_Kashmir.geojson',
+      //     dataType: 'json',
+      //     // async: false,
+      //     success: function (response) {
+      //       Features = response;
+      //       Features.crs.properties.name = 'urn:ogc:def:crs:OGC:1.3:CRS84';
+      //       // Features = new ol.format.GeoJSON().readFeatures(response);
+      //       console.log(Features.crs.properties.name);
+      //       console.log(Features);
+      //     }
+      // });
+
+      // when loading from a features from a remote server, we need to provide
+      // a loading function that handles the actual communication
+      // using jQuery's ajax function, we can load the data and ask the WFS
+      // server to use jsonp and send the results to the loadFeatures function
+      var vectorLoader = function(extent, resolution, projection) {
+        var url = 'http://localhost:8081/geoserver/nyc/ows?service=WFS&' +
+            'version=1.0.0&request=GetFeature&typeName=nyc:Pakistan_with_Kashmir&' +
+            'outputFormat=text/javascript&format_options=callback:loadFeatures' +
+            '&srsname=EPSG:3857&bbox=' + extent.join(',') + ',EPSG:3857';
+        $.ajax({
+          url: url,
+          dataType: 'jsonp',
+        });
+      };
+
+      // this will be called when the server data has been loaded, we can
+      // use the source to read the features using its configured format
+      var loadFeatures = function(response) {
+        var features = vectorSource.readFeatures(response);
+        vectorSource.addFeatures(features);
+        console.log(response);
+      };
+
+      var vectorSource = new ol.source.ServerVector({
+        format: new ol.format.GeoJSON(),
+        loader: vectorLoader,
+        strategy: ol.loadingstrategy.createTile(new ol.tilegrid.XYZ({
+          maxZoom: 4
+        }))
+      });
+
+      // a vector layer, this time with some style options
+      var serverVector = new ol.layer.Vector({
+        id: 'europa',
+        source: vectorSource,
+        style: defaultEuropa
+      });
+
+
+      //  * Elements that make up the popup.
+      //  */
+      var container = document.getElementById('popup');
+      var content = document.getElementById('popup-content');
+      var closer = document.getElementById('popup-closer');
+
+      // /**
+      //  * Create an overlay to anchor the popup to the map.
+      //  */
+      var overlay = new ol.Overlay({
+        element: container,
+        autoPan: {
+          animation: {
+            duration: 250,
+          },
+        },
+      });
+
+      // /**
+      //  * Add a click handler to hide the popup.
+      //  * @return {boolean} Don't follow the href.
+      //  */
+      closer.onclick = function () {
+        overlay.setPosition(undefined);
+        closer.blur();
+        return false;
+      };
+      // creates Open street Map Layer  
+      var raster = new ol.layer.Tile({
+        source: new ol.source.OSM()
+      });
+
+      // feature style when selected
+      var selectEuropa = new ol.style.Style({
+          stroke: new ol.style.Stroke({
+            color: '#ff0000',
+            width: 2
+        })
+      });
+      // feature style when unselected
+      var defaultEuropa = new ol.style.Style({
+        stroke: new ol.style.Stroke({
+          color: '#0000ff',
+          width: 2
+        })
+      });
+      // // // function to get vector feature from geojson file
+      // var vectorEuropa = new ol.layer.Vector({
+      //   id: 'europa',
+      //   source: new ol.source.GeoJSON({
+      //     projection: 'EPSG:3857',
+      //     url: '../assets/data/countries.geojson'
+      //   }),
+      //   style: defaultEuropa
+      // });
+
+
+
+      // var vectorEuropa = new ol.layer.Vector({
+      //       id: 'europa',
+      //       source: new ol.source.Vector({
+      //         projection: 'EPSG:3857',
+      //         object: Features
+      //       }),
+      //       style: defaultEuropa
+      // })
+
+
+      // 
+      var selectInteraction = new ol.interaction.Select({
+        layers: function (layer) {
+          return layer.get('id') == 'europa';
+        },
+        style: [selectEuropa]
+      });
+
+      var pakistan = ol.proj.transform([69.3451, 30.3753], 'EPSG:4326', 'EPSG:3857');
+
+      var view = new ol.View({
+        center: pakistan,
+        zoom: 3
+      });
+
+      var map = new ol.Map({
+        target: 'map'
+      });
+
+      map.addLayer(raster);
+      map.addLayer(serverVector);
+      map.setView(view);
+      map.addOverlay(overlay);
+
+      map.getInteractions().extend([selectInteraction]);
+
+      var displayFeatureInfo = function(pixel, coordinate) {
+        var features = [];
+        map.forEachFeatureAtPixel(pixel, function(feature, layer) {
+          features.push(feature);
+        });
+
+      var container = document.getElementById('information');
+      
+        if (features.length > 0) {
+          var info = [];
+          for (var i = 0, ii = features.length; i < ii; ++i) {
+            info.push(features[i].get('PROVINCE'));
+          }
+          container.innerHTML = info.join(', ') || '(unknown)';
+          content.innerHTML = info.join(', ') + " <br/><br/>" + ol.coordinate.toStringHDMS(coordinate) || '(unknown)';
+          overlay.setPosition(coordinate);
+        } else {
+          container.innerHTML = '&nbsp;' + ol.coordinate.toStringHDMS(coordinate);
+          closer.click();
+          // content.innerHTML = '&nbsp; nothing';
+        }
+      };
+
+      map.on('singleclick', function(evt) {
+        var pixel = evt.pixel;
+        var coordinate = evt.coordinate;
+        // var hdms = ol.coordinate.toStringHDMS(coordinate);
+        displayFeatureInfo(pixel, coordinate);
+
+        // console.log(hdms);
+
+        // content.innerHTML = '<p>You clicked here:</p><code>' + coordinate + '</code>';
+        // overlay.setPosition(coordinate);
+      });
+    </script>
+  </body>
+</html>
